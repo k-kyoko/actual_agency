@@ -10,12 +10,9 @@ import numpy.random as ran
 import copy
 from pathlib import Path
 import scipy.io as sio
-import networkx as nx
+import networkx as nxS
 from scipy.stats import kde
 
-basepath = '/Users/gryllos/Documents'
-path = os.path.join(basepath, 'software/pyphi')
-sys.path.append(path)
 import pyphi
 
 ### MABE RELATED FUNCTIONS
