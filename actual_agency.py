@@ -1,5 +1,5 @@
 
-import numpy as npw
+import numpy as np
 import pandas as pd
 import subprocess as sp
 import pickle
@@ -13,7 +13,14 @@ import scipy.io as sio
 import networkx as nxS
 from scipy.stats import kde
 
+# here you must set path to your working pyphi directory
+path = /Users/bjornjuel/projects/Renzo_AA/actual_agency_old/src/pyphi
+sys.path.append(path)
 import pyphi
+
+# Setting colors used in plotting functions
+blue, red, green, grey, white = '#77b3f9', '#f98e81', '#8abf69', '#adadad', '#ffffff'
+purple, yellow = '#d279fc', '#f4db81'
 
 ### MABE RELATED FUNCTIONS
 def parseTPM(TPM_jory):
@@ -91,6 +98,13 @@ def getBrainActivity(data, n_agents=1, n_trials=64, n_nodes=8, n_sensors=2,n_hid
     return brain_activity
 
 def parseActivity(path,file,n_runs=30,n_agents=61,n_trials=64,world_height=35,n_nodes=8,n_sensors=2,n_hidden=4,n_motors=2):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
     with open(os.path.join(path,file),'rb') as f:
         activity = pickle.load(f)
 
@@ -106,6 +120,177 @@ def parseActivity(path,file,n_runs=30,n_agents=61,n_trials=64,world_height=35,n_
 
 
 ### ACTTUAL CAUSATION ANALYSIS FUNCTIONS
+def get_purview(causal_link):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    extended_purview = causal_link._extended_purview
+    purview = set()
+    for p in extended_purview:
+        purview = purview.union(p)
+    return tuple(purview)
+
+def get_actual_causes(animat, trial, t, cause_ixs, effect_ixs):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    before_state, after_state = animat.get_transition(trial,t,False)
+    transition = pyphi.actual.Transition(animat.brain, before_state, after_state, cause_ixs, effect_ixs)
+    account = pyphi.actual.account(transition, direction=pyphi.Direction.CAUSE)
+    causes = account.irreducible_causes
+    return causes
+
+def backtrack_cause(animat, trial, t, ocurrence_ixs=None, max_backsteps=3, debug=False):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    if ocurrence_ixs==None:
+        ocurrence_ixs = [2,3] if animat.n_nodes==8 else [1,2] # motor ixs
+
+    if animat.n_nodes==8:
+        cause_ixs = [0,1,4,5,6,7]
+        S1, S2, M1, M2, A, B, C, D = range(8)
+        label_dict = {key:x for key,x in zip(range(8),['S1', 'S2', 'M1', 'M2', 'A', 'B', 'C', 'D'])}
+    else:
+        cause_ixs = [0,3,4,5,6]
+        S1, M1, M2, A, B, C, D = range(7)
+        label_dict = {key:x for key,x in zip(range(7),['S1', 'M1', 'M2', 'A', 'B', 'C', 'D'])}
+
+    causal_chain = []
+
+    backstep = 1
+    end = False
+    effect_ixs = ocurrence_ixs
+    while not end and backstep <= max_backsteps and t>0:
+
+        causes = get_actual_causes(animat, trial, t, cause_ixs, effect_ixs)
+        n_causal_links = len(causes)
+
+        if n_causal_links==0:
+            end=True
+
+        # use the union of the purview of all actual causes as the next ocurrence (effect_ixs) in the backtracking
+        effect_ixs = [p for cause in causes for p in get_purview(cause)]
+        effect_ixs = list(set(effect_ixs))
+
+        if animat.n_nodes==8:
+            if (len(effect_ixs)==1 and (S1 in effect_ixs or S2 in effect_ixs)):
+                end=True
+            elif (len(effect_ixs)==2 and (S1 in effect_ixs and S2 in effect_ixs)):
+                end=True
+        else:
+            if (len(effect_ixs)==1 and (S1 in effect_ixs)):
+                end=True
+
+        if debug:
+            print(f't: {t}')
+            print_transition(animat.get_transition(trial,t))
+            print(causes)
+            next_effect = [label_dict[ix] for ix in effect_ixs]
+            print('Next effect_ixs: {}'.format(next_effect))
+
+        causal_chain.append(causes)
+        t -= 1
+        backstep += 1
+        if t==-1:
+            print('t=-1 reached.')
+    return causal_chain
+
+def calc_causal_history(animat, trial, only_motor=True,debug=False):
+    '''
+    Calculates animat's causal history, defined as the actual causes of
+    every state (only motor or not) across a trial.
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    n_times = animat.brain_activity.shape[1]
+    if animat.n_nodes==8:
+        cause_ixs = [0,1,4,5,6,7]
+        effect_ixs = [2,3] if only_motor else [2,3,4,5,6,7]
+    else:
+        cause_ixs = [0,3,4,5,6]
+        effect_ixs = [1,2] if only_motor else [1,2,3,4,5,6]
+
+    causal_chain = []
+
+    bar = widgets.IntProgress(min=0,max=n_times-1)
+    display.display(bar)
+    for t in reversed(range(1,n_times)):
+
+        before_state, after_state = animat.get_transition(trial,t,False)
+        transition = pyphi.actual.Transition(animat.brain, before_state, after_state, cause_ixs, effect_ixs)
+        account = pyphi.actual.account(transition, direction=pyphi.Direction.CAUSE)
+        causes = account.irreducible_causes
+
+        if debug:
+            print(f't: {t}')
+            print_transition((before_state,after_state))
+            print(causes)
+
+        causal_chain.append(causes)
+        bar.value +=1
+    return causal_chain
+
+def get_backtrack_array(causal_chain,n_nodes):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    def get_alpha_cause_account_distribution(cause_account, n_nodes):
+        alpha_dist = np.zeros(8)
+        for causal_link in cause_account:
+            alpha = causal_link.alpha
+            n_purviews = len(causal_link._extended_purview)
+            alpha = alpha/n_purviews
+            for purview in causal_link._extended_purview:
+                purview_length = len(purview)
+                alpha_dist[list(purview)] += alpha/purview_length
+        alpha_dist = alpha_dist[[0,3,4,5,6]] if n_nodes==7 else alpha_dist[[0,1,4,5,6,7]]
+        return alpha_dist
+
+    n_backsteps = len(causal_chain)
+    BT = np.zeros((n_backsteps,n_nodes-2))
+
+    for i, cause_account in enumerate(causal_chain):
+        BT[n_backsteps - (i+1),:] = get_alpha_cause_account_distribution(cause_account, n_nodes)
+    return BT
+
+def get_causal_history_array(causal_chain,n_nodes,mode='alpha'): # OLD
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    n_timesteps = len(causal_chain)
+    causal_history = np.zeros((n_timesteps,n_nodes))
+    for i in range(n_timesteps):
+        for causal_link in causal_chain[i]:
+            if mode=='alpha':
+                weight = causal_link.alpha
+            else:
+                weight = 1
+            causal_history[n_timesteps - (i+1),list(get_purview(causal_link))] += weight
+    return causal_history
+
 
 def get_occurrences(activityData,numSensors,numHidden,numMotors):
     '''
@@ -156,7 +341,14 @@ def get_occurrences(activityData,numSensors,numHidden,numMotors):
 
 def AnalyzeTransitions(network, activity, cause_indices=[0,1,4,5,6,7], effect_indices=[2,3],
                        sensor_indices=[0,1], motor_indices=[2,3],
-                       purview = [],alpha = [],motorstate = [],transitions = [], account = []):
+                       purview = [],alpha = [],motorstate = [],transitions = [], account = [])
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    ''':
 
     states = len(activity)
     n_nodes = len(activity[0])
@@ -200,7 +392,14 @@ def AnalyzeTransitions(network, activity, cause_indices=[0,1,4,5,6,7], effect_in
 
 def createPandasFromACAnalysis(LODS,agents,activity,TPMs,CMs,labs,
                                cause_indices=[0,1,4,5,6,7], effect_indices=[2,3],
-                               sensor_indices=[0,1], motor_indices=[2,3]):
+                               sensor_indices=[0,1], motor_indices=[2,3])
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
 
     catch = []
     purview = []
@@ -361,103 +560,157 @@ def Bootstrap_mean(data,n):
     return means
 
 def get_bootstrap_stats(data,n=500):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
     fit = Bootstrap_mean(data,n)
     return np.mean(fit,0), np.std(fit,0)
+
+
 ### PLOTTING FUNCTIONS
 
-def plot_LODdata_and_Bootstrap(x,LODdata,label='data',color='b',linestyle='-',figsize=[20,10]):
+def plot_ACanalysis(animat, world, trial, t, causal_chain=None, plot_state_history=False,
+                    causal_history=None,causal_history_motor=None, plot_causal_account=True,
+                    plot_state_transitions=True, n_backsteps=None):
+                    
     '''
-    Function for doing bootstrap resampling of the mean for a 2D data matrix.
+    Function description
         Inputs:
-            x:
-            LODdata:
+            inputs:
         Outputs:
-            fig:
+            outputs:
     '''
 
-    fit = Bootstrap_mean(LODdata,500)
-    m_fit = np.mean(fit,0)
-    s_fit = np.std(fit,0)
-    fig = plt.figure(figsize=figsize)
-    for LOD in LODdata:
-        plt.plot(x,LOD,'r',alpha=0.1)
-    plt.fill_between(x, m_fit-s_fit, m_fit+s_fit, color=color, alpha=0.2)
-    plt.plot(x, m_fit, label=label, color=color, linestyle=linestyle)
+    n_sensors = animat.n_sensors
+    n_nodes = animat.n_nodes
+    # PLOT SCREEN
+    _, block = world._get_initial_condition(trial)
+    fullgame_history = world.get_fullgame_history()
+    wins = world.wins
 
-    return fig
+    n_cols = 4
+    if plot_state_history:
+        n_cols +=1
+    if causal_history is not None:
+        n_cols +=1
+    if causal_history_motor is not None:
+        n_cols +=1
+    if causal_chain is not None:
+        n_cols +=1
+
+    n_rows = 2
+    col=0
+
+    plt.subplot2grid((2,n_cols),(0,col),rowspan=2, colspan=2)
+    col+=2
+    plt.imshow(fullgame_history[trial,t,:,:],cmap=plt.cm.binary);
+    plt.xlabel('x'); plt.ylabel('y')
+    win = 'WON' if wins[trial] else 'LOST'
+    direction = '━▶' if block.direction=='right' else '◀━'
+    plt.title('Game - Trial: {}, {}, {}, {}'.format(block.size,block.type,direction,win))
+
+    # PLOT CAUSAL HISTORIES
+    labels = ['S1', 'S2', 'M1', 'M2', 'A', 'B', 'C', 'D'] if n_sensors==2 else ['S1', 'M1', 'M2', 'A', 'B', 'C', 'D']
+
+    if plot_state_history:
+        plt.subplot2grid((2,n_cols),(0,col),rowspan=2)
+        col+=1
+        # plt.colorbar(shrink=0.2)
+        plt.xticks(range(n_nodes),labels)
+        plt.xlabel('Node'); plt.ylabel('Time')
+        plt.title('Brain states history')
+        plt.imshow(animat.brain_activity[trial],cmap=plt.cm.binary)
+        plt.colorbar(shrink=0.1)
+        plt.axhline(t-0.5,color=red)
+        plt.axhline(t+0.5,color=red)
+
+    if causal_history is not None:
+        plt.subplot2grid((2,n_cols),(0,col),rowspan=2)
+        col+=1
+        plt.imshow(causal_history, cmap=plt.cm.magma_r)
+        plt.colorbar(shrink=0.2)
+        plt.xticks(range(n_nodes),labels)
+        plt.xlabel('Node'); plt.ylabel('Time')
+        plt.title('Causal history')
+    if causal_history_motor is not None:
+        plt.subplot2grid((2,n_cols),(0,col),rowspan=2)
+        col+=1
+        plt.imshow(causal_history_motor, vmax=6, cmap=plt.cm.magma_r)
+        plt.colorbar(shrink=0.2)
+        plt.xticks(range(n_nodes),labels)
+        plt.xlabel('Node')
+        plt.title('Causal history of M1,M2')
+
+    # PLOT BACKTRACKING
+    if causal_chain is not None:
+        BT = get_backtrack_array(causal_chain,n_nodes=n_nodes)
+        if n_backsteps is None:
+            n_backsteps = len(causal_chain)
+        BT = BT[-n_backsteps:]
+        S = np.zeros((world.height,n_nodes))
+        ixs = [0,3,4,5,6] if n_sensors==1 else [0,1,4,5,6,7]
+        S[t-n_backsteps:t,ixs] = BT
+
+        plt.subplot2grid((2,n_cols),(0,col),rowspan=2)
+        col+=1
+        plt.imshow(S,vmin=0,vmax=np.max(BT),cmap=plt.cm.magma_r)
+        plt.colorbar(shrink=0.2)
+
+        labels = ['S1', 'S2', 'M1', 'M2', 'A', 'B', 'C', 'D'] if n_sensors==2 else ['S1', 'M1', 'M2', 'A', 'B', 'C', 'D']
+        plt.xticks(range(n_nodes),labels)
+        plt.xlabel('Node')
+        plt.title('Backtracking of M1,M2')
+
+    # PLOT ANIMAT BRAIN
+    if plot_state_transitions:
+        transition = animat.get_transition(trial,t,False)
+        if animat.n_nodes==8:
+            cause_ixs = [0,1,4,5,6,7]
+            effect_ixs = [2,3]
+        else:
+            cause_ixs = [0,3,4,5,6]
+            effect_ixs = [1,2]
+        T = pyphi.actual.Transition(animat.brain, transition[0], transition[1], cause_ixs, effect_ixs)
+        account = pyphi.actual.account(T, direction=pyphi.Direction.CAUSE)
+        causes = account.irreducible_causes
+
+        plt.subplot2grid((2,n_cols),(0,col),colspan=2)
+        animat.plot_brain(transition[0])
+        plt.title('Brain\n\nT={}'.format(t-1),y=0.85)
+
+        if plot_causal_account:
+            plt.text(0,0,causes,fontsize=12)
 
 
+        plt.subplot2grid((2,n_cols),(1,col),colspan=2)
+        animat.plot_brain(transition[1])
+        plt.title('T={}'.format(t),y=0.85)
 
-def plot_2LODdata_and_Bootstrap(x,LODdata1,LODdata2,label=['data1','data2'],color=['k','y'],linestyle='-',figsize=[20,10],fig=None,subplot=111):
-    '''
-    Function for doing bootstrap resampling of the mean for a 2D data matrix.
-        Inputs:
-            x:
-            LODdata:
-        Outputs:
-            fig:
-    '''
+        plt.text(-2,6,transition_str(transition),fontsize=12)
 
-    fit1 = Bootstrap_mean(LODdata1,500)
-    m_fit1 = np.mean(fit1,0)
-    s_fit1 = np.std(fit1,0)
-    fit2 = Bootstrap_mean(LODdata2,500)
-    m_fit2 = np.mean(fit2,0)
-    s_fit2 = np.std(fit2,0)
-    if fig==None:
-        fig = plt.figure(figsize=figsize)
-    plt.subplot(subplot)
-    for LOD1,LOD2 in zip(LODdata1,LODdata2):
-        plt.plot(x,LOD1,color[0],alpha=0.1)
-        plt.plot(x,LOD2,color[1],alpha=0.1)
-    plt.fill_between(x, m_fit1-s_fit1, m_fit1+s_fit1, color=color[0], alpha=0.2)
-    plt.plot(x, m_fit1, label=label[0], color=color[0], linestyle=linestyle)
-    plt.fill_between(x, m_fit2-s_fit2, m_fit2+s_fit2, color=color[1], alpha=0.2)
-    plt.plot(x, m_fit2, label=label[1], color=color[1], linestyle=linestyle)
+    else:
+        state = animat.get_state(trial,t)
+        plt.subplot2grid((18,n_cols),(0,col),colspan=2,rowspan=9)
+        animat.plot_brain(state)
+        plt.subplot2grid((18,n_cols),(9,col),colspan=2)
+        plt.imshow(np.array(state)[np.newaxis,:],cmap=plt.cm.binary)
+        plt.yticks([])
+        plt.xticks(range(animat.n_nodes),labels)
+    # plt.tight_layout()
 
-    return fig
-
-
-def hist2d_2LODdata(LODdata1x,LODdata1y,LODdata2x,LODdata2y, nbins=20):
-    '''
-    Function for doing bootstrap resampling of the mean for a 2D data matrix.
-        Inputs:
-            x:
-            LODdata:
-        Outputs:
-            fig:
-    '''
-    xmin = np.min((np.min(LODdata1x),np.min(LODdata2x)))
-    xmax = np.max((np.max(LODdata1x),np.max(LODdata2x)))
-    ymin = np.min((np.min(LODdata1y),np.min(LODdata2y)))
-    ymax = np.max((np.max(LODdata1y),np.max(LODdata2y)))
-
-    xbins = np.linspace(xmin,xmax,nbins)
-    ybins = np.linspace(ymin,ymax,nbins)
-    plt.figure()
-    plt.subplot(121)
-    plt.hist2d(np.ravel(LODdata1x),np.ravel(LODdata1y),[xbins,ybins],norm=mpl.colors.LogNorm())
-    plt.subplot(122)
-    plt.hist2d(np.ravel(LODdata2x),np.ravel(LODdata2y),[xbins,ybins],norm=mpl.colors.LogNorm())
-
-def plot_mean_with_errors(x, y, yerr, color, label=None, linestyle=None):
-    plt.fill_between(x, y-yerr, y+yerr, color=color, alpha=0.1)
-    plt.plot(x, y, label=label, color=color, linestyle=linestyle)
-
-def plot_2Ddensity(x,y, plot_samples=True, cmap=plt.cm.Blues, color=None, markersize=0.7):
-    data = np.c_[x,y]
-    k = kde.gaussian_kde(data.T)
-    nbins = 20
-    xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
-    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-    plt.pcolormesh(xi, yi, zi.reshape(xi.shape), cmap=cmap)
-
-    plt.plot(x,y,'.', color=color, markersize=markersize)
-
-
-### OTHER FUNCTIONS
 def plot_brain(cm, graph=None, state=None, ax=None):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     n_nodes = cm.shape[0]
     if n_nodes==7:
         labels = ['S1','M1','M2','A','B','C','D']
@@ -514,7 +767,138 @@ def plot_brain(cm, graph=None, state=None, ax=None):
     edgecolors='#000000', linewidths=linewidths, pos=pos, ax=ax)
 
 
+def plot_mean_with_errors(x, y, yerr, color, label=None, linestyle=None):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    if len(yerr)==2: # top and bottom percentiles
+        plt.fill_between(x, yerr[0], yerr[1], color=color, alpha=0.1)
+    else:
+        plt.fill_between(x, y-yerr, y+yerr, color=color, alpha=0.1)
+    plt.plot(x, y, label=label, color=color, linestyle=linestyle)
+
+
+def plot_LODdata_and_Bootstrap(x,LODdata,label='data',color='b',linestyle='-',figsize=[20,10]):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    fit = Bootstrap_mean(LODdata,500)
+    m_fit = np.mean(fit,0)
+    s_fit = np.std(fit,0)
+    fig = plt.figure(figsize=figsize)
+    for LOD in LODdata:
+        plt.plot(x,LOD,'r',alpha=0.1)
+    plt.fill_between(x, m_fit-s_fit, m_fit+s_fit, color=color, alpha=0.2)
+    plt.plot(x, m_fit, label=label, color=color, linestyle=linestyle)
+
+    return fig
+
+
+
+def plot_2LODdata_and_Bootstrap(x,LODdata1,LODdata2,label=['data1','data2'],color=['k','y'],linestyle='-',figsize=[20,10],fig=None,subplot=111):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    fit1 = Bootstrap_mean(LODdata1,500)
+    m_fit1 = np.mean(fit1,0)
+    s_fit1 = np.std(fit1,0)
+    fit2 = Bootstrap_mean(LODdata2,500)
+    m_fit2 = np.mean(fit2,0)
+    s_fit2 = np.std(fit2,0)
+    if fig==None:
+        fig = plt.figure(figsize=figsize)
+    plt.subplot(subplot)
+    for LOD1,LOD2 in zip(LODdata1,LODdata2):
+        plt.plot(x,LOD1,color[0],alpha=0.1)
+        plt.plot(x,LOD2,color[1],alpha=0.1)
+    plt.fill_between(x, m_fit1-s_fit1, m_fit1+s_fit1, color=color[0], alpha=0.2)
+    plt.plot(x, m_fit1, label=label[0], color=color[0], linestyle=linestyle)
+    plt.fill_between(x, m_fit2-s_fit2, m_fit2+s_fit2, color=color[1], alpha=0.2)
+    plt.plot(x, m_fit2, label=label[1], color=color[1], linestyle=linestyle)
+
+    return fig
+
+
+def hist2d_2LODdata(LODdata1x,LODdata1y,LODdata2x,LODdata2y, nbins=20):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    xmin = np.min((np.min(LODdata1x),np.min(LODdata2x)))
+    xmax = np.max((np.max(LODdata1x),np.max(LODdata2x)))
+    ymin = np.min((np.min(LODdata1y),np.min(LODdata2y)))
+    ymax = np.max((np.max(LODdata1y),np.max(LODdata2y)))
+
+    xbins = np.linspace(xmin,xmax,nbins)
+    ybins = np.linspace(ymin,ymax,nbins)
+    plt.figure()
+    plt.subplot(121)
+    plt.hist2d(np.ravel(LODdata1x),np.ravel(LODdata1y),[xbins,ybins],norm=mpl.colors.LogNorm())
+    plt.subplot(122)
+    plt.hist2d(np.ravel(LODdata2x),np.ravel(LODdata2y),[xbins,ybins],norm=mpl.colors.LogNorm())
+
+def plot_mean_with_errors(x, y, yerr, color, label=None, linestyle=None):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    plt.fill_between(x, y-yerr, y+yerr, color=color, alpha=0.1)
+    plt.plot(x, y, label=label, color=color, linestyle=linestyle)
+
+def plot_2Ddensity(x,y, plot_samples=True, cmap=plt.cm.Blues, color=None, markersize=0.7):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
+    data = np.c_[x,y]
+    k = kde.gaussian_kde(data.T)
+    nbins = 20
+    xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+    plt.pcolormesh(xi, yi, zi.reshape(xi.shape), cmap=cmap)
+
+    plt.plot(x,y,'.', color=color, markersize=markersize)
+
+
+### OTHER FUNCTIONS
+
 def state_str(state):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     if len(state)==8:
         s = '{}|{}|{}'.format(state[:2],state[2:4],state[4:])
     elif len(state)==7:
@@ -524,11 +908,27 @@ def state_str(state):
     return s
 
 def transition_str(transition):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     state1, state2 = transition
     s = state_str(state1)+' ━━▶'+state_str(state2)
     return s
 
 def print_state(state):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     if len(state)==8:
         s = '   S      M        H\n' + state_str(state)
 
@@ -537,6 +937,14 @@ def print_state(state):
     print(s)
 
 def print_transition(transition):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     state1, state2 = transition
     if len(state1)==8:
         print('   S      M        H                S     M        H\n' + state_str(state1)+' ━━▶'+state_str(state2))
@@ -544,6 +952,14 @@ def print_transition(transition):
         print('  S     M        H               S     M        H\n' + state_str(state1)+' ━━▶'+state_str(state2))
 
 def get_event_id(task,n_sensors,run,agent,trial=None,t=None):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+
     if t!=None:
         return '_'.join(['task',str(task),'sensor',str(n_sensors),'run',str(run),'agent',str(agent),'trial',str(trial),'t',str(t)])
     if trial!=None:
@@ -552,6 +968,14 @@ def get_event_id(task,n_sensors,run,agent,trial=None,t=None):
         return '_'.join(['task',str(task),'sensor',str(n_sensors),'run',str(run),'agent',str(agent)])
 
 def load_dataset(path):
+    '''
+    Function description
+        Inputs:
+            inputs:
+        Outputs:
+            outputs:
+    '''
+    
     print(os.listdir(path))
 
     data = []
