@@ -63,7 +63,7 @@ for line in fileinput.input(name_folder+name_experiment+name_exp2, inplace=True)
     print(line.replace('recordIOMap_fileName = DO NOT CHANGE', 'recordIOMap_fileName = '+filename_activityfile), end='')
 
 # then we run the experiments
-runs = 25
+runs = 5
 
 for r in list(range(0,runs)):
     print(['run number ' + str(r)])
