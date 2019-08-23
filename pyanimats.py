@@ -27,6 +27,7 @@ class Animat:
 
     def set_x(self, position):
         self.x = position
+
     def set_y(self, position):
         self.y = position
 
@@ -71,6 +72,12 @@ class Animat:
             return tuple(self.brain_activity[trial, t-1, before_state_ixs]), tuple(self.brain_activity[trial, t, after_state_ixs])
         else:
             return tuple(self.brain_activity[trial, t-1]), tuple(self.brain_activity[trial, t])
+
+    def get_state(self, trial, t, trim=False):
+        if not hasattr(self, 'brain_activity'):
+            raise AttributeError('No brain activity saved yet.')
+
+        return tuple(self.brain_activity[trial, t])
 
     def get_unique_transitions(self, trial=None, trim=True):
         if not hasattr(self, 'brain_activity'):
@@ -243,6 +250,13 @@ class World:
             self.history[trial,:,:,:], win = self._runGameTrial(trial,self.animat, block)
             wins.append(win)
         return self.history, wins
+        
+    def get_fullgame_history(self, animat=None, block_patterns=None):
+        if hasattr(self, 'history'):
+            return self.history
+        else:
+            self.run_fullgame(animat, block_patterns)
+            return self.history
 
     def _check_win(self, block, animat):
         block_ixs = self.screen.wrapper(range(block.x, block.x + len(block)))
