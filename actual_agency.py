@@ -5,7 +5,7 @@ import scipy.io as sio
 from scipy.stats import kde
 from matplotlib import pyplot as plt
 import matplotlib as mpl
-import networkx as nxS
+import networkx as nx
 import pandas as pd
 import pickle
 import os
