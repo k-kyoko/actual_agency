@@ -1,4 +1,0 @@
-update,timeToCoalescence,ID,alive,correct_AVE,correct_LIST,genomeLength,incorrect_AVE,incorrect_LIST,markovBrainDeterministicGates,markovBrainGates,markovBrain_nextNodesConnections_AVE,markovBrain_nextNodesConnections_LIST,markovBrain_nodesConnections_AVE,markovBrain_nodesConnections_LIST,optimizeValue,score_AVE,score_LIST,timeOfBirth
-0,0,70,1,31.000000,"31",5000,33.000000,"33",2,2,0.500000,"1,0,1,1,1,0,0,0",0.750000,"0,1,0,1,1,1,2,0",0.907029,0.907029,"0.907029",-1
-500,0,50056,1,51.000000,"51",10038,13.000000,"13",3,3,1.125000,"1,1,2,1,1,2,1,0",1.250000,"2,2,0,1,0,1,3,1",6.385477,6.385477,"6.385477",499
-1000,56,100049,1,51.000000,"51",15606,13.000000,"13",4,4,1.125000,"0,2,2,1,1,2,1,0",1.500000,"2,3,0,0,0,2,4,1",6.385477,6.385477,"6.385477",999
