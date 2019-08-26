@@ -1,20 +1,21 @@
 
 import numpy as np
-import pandas as pd
-import subprocess as sp
-import pickle
+import numpy.random as ran
+import scipy.io as sio
+from scipy.stats import kde
 from matplotlib import pyplot as plt
 import matplotlib as mpl
-import os
-import numpy.random as ran
-import copy
-from pathlib import Path
-import scipy.io as sio
 import networkx as nxS
-from scipy.stats import kde
+import pandas as pd
+import pickle
+import os
+import sys
+import copy
+import subprocess as sp
+from pathlib import Path
 
 # here you must set path to your working pyphi directory
-path = /Users/bjornjuel/projects/Renzo_AA/actual_agency_old/src/pyphi
+path = '/Users/bjornjuel/projects/Renzo_AA/actual_agency_old/src/pyphi'
 sys.path.append(path)
 import pyphi
 
@@ -341,14 +342,14 @@ def get_occurrences(activityData,numSensors,numHidden,numMotors):
 
 def AnalyzeTransitions(network, activity, cause_indices=[0,1,4,5,6,7], effect_indices=[2,3],
                        sensor_indices=[0,1], motor_indices=[2,3],
-                       purview = [],alpha = [],motorstate = [],transitions = [], account = [])
+                       purview = [],alpha = [],motorstate = [],transitions = [], account = []):
     '''
     Function description
         Inputs:
             inputs:
         Outputs:
             outputs:
-    ''':
+    '''
 
     states = len(activity)
     n_nodes = len(activity[0])
@@ -392,7 +393,7 @@ def AnalyzeTransitions(network, activity, cause_indices=[0,1,4,5,6,7], effect_in
 
 def createPandasFromACAnalysis(LODS,agents,activity,TPMs,CMs,labs,
                                cause_indices=[0,1,4,5,6,7], effect_indices=[2,3],
-                               sensor_indices=[0,1], motor_indices=[2,3])
+                               sensor_indices=[0,1], motor_indices=[2,3]):
     '''
     Function description
         Inputs:

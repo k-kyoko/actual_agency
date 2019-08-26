@@ -7,7 +7,7 @@ import copy
 import pyphi
 import networkx as nx
 
-import ActualAgency
+import actual_agency
 
 class Animat:
     def __init__(self, params):
@@ -250,7 +250,7 @@ class World:
             self.history[trial,:,:,:], win = self._runGameTrial(trial,self.animat, block)
             wins.append(win)
         return self.history, wins
-        
+
     def get_fullgame_history(self, animat=None, block_patterns=None):
         if hasattr(self, 'history'):
             return self.history
